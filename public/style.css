@@ -26,6 +26,7 @@
   --c-telecom: #22c55e; /* vert */
   --c-alarm:   #dc2626; /* rouge */
   --c-cctv:    #ffffff; /* blanc */
+  --c-autre:   #f97316; /* orange */
 
   --topbar-h:  56px;
   --sidebar-w: 280px;
@@ -85,7 +86,7 @@ input, select { font-family: inherit; }
 .logo-icon { font-size: 18px; }
 .logo-text {
   font-weight: 800; font-size: 18px;
-  幕background: linear-gradient(135deg, #fff 40%, var(--accent));
+  background: linear-gradient(135deg, #ffffff 30%, #e2e8f0 70%, var(--accent));
   -webkit-background-clip: text; -webkit-text-fill-color: transparent;
   white-space: nowrap;
 }
@@ -208,7 +209,26 @@ body.sidebar-hidden #sidebar {
   padding: 1px 6px; min-width: 20px; text-align: center;
 }
 
-/* Formulaires sidebar */
+/* Boutons d'action dans la sidebar */
+.sidebar-action-btn {
+  width: 100%;
+  padding: 10px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  transition: all 0.2s;
+}
+.sidebar-action-btn:hover {
+  border-color: var(--border2);
+  color: var(--accent);
+  background: var(--bg4);
+}
+
+/* Formulaires */
 .section-title {
   font-size: 10px; color: var(--text-dim);
   text-transform: uppercase; letter-spacing: .08em;
@@ -217,12 +237,6 @@ body.sidebar-hidden #sidebar {
 .select-label {
   font-size: 10px; color: var(--text-dim);
   margin-top: 4px; margin-left: 2px;
-}
-
-#addSection, #mapCenterSection {
-  padding: 12px;
-  border-bottom: 1px solid var(--border);
-  display: flex; flex-direction: column; gap: 6px;
 }
 
 .field {
@@ -238,16 +252,6 @@ body.sidebar-hidden #sidebar {
 }
 .field:focus { border-color: var(--accent); }
 .field::placeholder { color: var(--text-dim); }
-
-#addClientBtn, #centerMapBtn {
-  width: 100%; padding: 9px;
-  background: var(--accent);
-  border: none; border-radius: 6px;
-  color: #000; font-weight: 700; font-size: 12px;
-  transition: background 0.2s;
-  margin-top: 4px;
-}
-#addClientBtn:hover, #centerMapBtn:hover { background: var(--accent2); }
 
 /* ── MAIN ──────────────────────────────────────────── */
 #main {
@@ -288,15 +292,69 @@ body.sidebar-hidden #sidebar {
 /* Pastilles de couleurs types contrats */
 .contract-dot {
   width: 10px; height: 10px; border-radius: 50%; display: inline-block;
+  position: relative;
 }
 .contract-dot.info { background-color: var(--c-info); box-shadow: 0 0 6px var(--c-info); }
 .contract-dot.it { background-color: var(--c-it); box-shadow: 0 0 6px var(--c-it); }
 .contract-dot.telecom { background-color: var(--c-telecom); box-shadow: 0 0 6px var(--c-telecom); }
 .contract-dot.alarm { background-color: var(--c-alarm); box-shadow: 0 0 6px var(--c-alarm); }
 .contract-dot.cctv { background-color: var(--c-cctv); box-shadow: 0 0 6px var(--c-cctv); }
+.contract-dot.autre { background-color: var(--c-autre); box-shadow: 0 0 6px var(--c-autre); }
+
+/* Infobulle de survol pour les pastilles de contrats */
+.contract-dot[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #000;
+  color: #fff;
+  padding: 4px 8px;
+  font-size: 10px;
+  border-radius: 4px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  z-index: 9999;
+  border: 1px solid var(--border);
+}
+.contract-dot[data-tooltip]:hover::after {
+  opacity: 1;
+}
 
 .contract-badge-dot {
   width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex-shrink: 0;
+  position: relative;
+}
+.contract-badge-dot.info { background-color: var(--c-info); box-shadow: 0 0 6px var(--c-info); }
+.contract-badge-dot.it { background-color: var(--c-it); box-shadow: 0 0 6px var(--c-it); }
+.contract-badge-dot.telecom { background-color: var(--c-telecom); box-shadow: 0 0 6px var(--c-telecom); }
+.contract-badge-dot.alarm { background-color: var(--c-alarm); box-shadow: 0 0 6px var(--c-alarm); }
+.contract-badge-dot.cctv { background-color: var(--c-cctv); box-shadow: 0 0 6px var(--c-cctv); }
+.contract-badge-dot.autre { background-color: var(--c-autre); box-shadow: 0 0 6px var(--c-autre); }
+
+.contract-badge-dot[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 135%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #000;
+  color: #fff;
+  padding: 4px 8px;
+  font-size: 11px;
+  border-radius: 4px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  z-index: 9999;
+  border: 1px solid var(--border);
+}
+.contract-badge-dot[data-tooltip]:hover::after {
+  opacity: 1;
 }
 
 /* ── JOURNAL DE LOGS COMPLET ──────────────────────── */
@@ -304,6 +362,7 @@ body.sidebar-hidden #sidebar {
   display: flex; gap: 10px; padding: 12px 16px;
   background: var(--bg2); border-bottom: 1px solid var(--border);
   align-items: center;
+  flex-wrap: wrap;
 }
 .logs-filter-bar .field { max-width: 200px; }
 #logsTableContainer { flex: 1; overflow-y: auto; padding: 16px; }

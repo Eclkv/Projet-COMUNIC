@@ -26,7 +26,8 @@ const CONTRACT_MAP = {
   it: { label: "Maintenance Informatique", color: "var(--c-it)", class: "it" },
   telecom: { label: "Maintenance Téléphonique", color: "var(--c-telecom)", class: "telecom" },
   alarm: { label: "Maintenance Alarme", color: "var(--c-alarm)", class: "alarm" },
-  cctv: { label: "Maintenance Vidéo-surveillance", color: "var(--c-cctv)", class: "cctv" }
+  cctv: { label: "Maintenance Vidéo-surveillance", color: "var(--c-cctv)", class: "cctv" },
+  autre: { label: "Contrat Autre", color: "var(--c-autre)", class: "autre" }
 };
 
 /* ══════════════════════════════════════════════════════
@@ -60,8 +61,8 @@ function switchView(view) {
   if (btn) btn.classList.add('active');
 
   if (view === 'topology') setTimeout(() => { if (map) map.invalidateSize(); }, 60);
-  if (view === 'list')     renderList();
-  if (view === 'alerts')   renderLogsTable();
+  if (view === 'list')      renderList();
+  if (view === 'alerts')    renderLogsTable();
 }
 
 document.querySelectorAll('.nav-btn[data-view]').forEach(btn => {
@@ -72,7 +73,6 @@ document.querySelectorAll('.nav-btn[data-view]').forEach(btn => {
    MAP (Leaflet) — Restreinte sur l'Alsace
 ══════════════════════════════════════════════════════ */
 function initMap() {
-  // Centrage Alsace par défaut
   map = L.map('map', { zoomControl: true }).setView([48.5, 7.5], 9);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -83,7 +83,6 @@ function initMap() {
   updateOfficeMarker();
 }
 
-/* Placer/Mettre à jour le marqueur rouge fixe du Bureau */
 function updateOfficeMarker() {
   if (officeMarker) map.removeLayer(officeMarker);
   
@@ -98,7 +97,6 @@ function updateOfficeMarker() {
   officeMarker.bindPopup(`<b>🏢 Siège COMUNIC</b><br>${BUREAU.label}`);
 }
 
-/* Centrer la carte sur une adresse (Le Bureau) */
 document.getElementById('centerMapBtn').addEventListener('click', async () => {
   const addr = document.getElementById('centerAddress').value.trim();
   if (!addr) return;
@@ -108,20 +106,20 @@ document.getElementById('centerMapBtn').addEventListener('click', async () => {
     map.setView([coords.lat, coords.lng], 13);
     updateOfficeMarker();
     try { localStorage.setItem('comunic_bureau_v2', JSON.stringify(BUREAU)); } catch(e) {}
+    closeModal('officeModal');
     showToast('🎯 Bureau enregistré et Carte centrée', 'info');
   } else {
     showToast('❌ Adresse du bureau introuvable', 'down');
   }
 });
 
-/* ── Marqueur Client avec Pastille de couleur de Contrat ── */
-function makeIcon(status, contractType) {
+/* Les pastilles de contrats n'apparaissent plus dans les marqueurs de la carte */
+function makeIcon(status) {
   const color = status === 'up' ? '#10b981' : status === 'down' ? '#ef4444' : '#f59e0b';
-  const contractObj = CONTRACT_MAP[contractType || 'info'] || CONTRACT_MAP.info;
   
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 28 36">
     <path d="M14 0C6.268 0 0 6.268 0 14c0 9 14 22 14 22S28 23 28 14C28 6.268 21.732 0 14 0z" fill="${color}" stroke="#fff" stroke-width="1.5"/>
-    <circle cx="14" cy="14" r="6" fill="${contractObj.color}" stroke="#fff" stroke-width="1"/>
+    <circle cx="14" cy="14" r="4" fill="#07090d" stroke="#fff" stroke-width="1"/>
   </svg>`;
   return L.divIcon({ html: svg, iconSize: [32,40], iconAnchor: [16,40], className: '' });
 }
@@ -131,16 +129,13 @@ function addMarker(device) {
   if (markers[device.id]) map.removeLayer(markers[device.id]);
 
   const marker = L.marker([device.lat, device.lng], {
-    icon : makeIcon(device.status || 'unknown', device.contractType),
+    icon : makeIcon(device.status || 'unknown'),
     title: device.name,
   }).addTo(map);
-
-  const contractObj = CONTRACT_MAP[device.contractType || 'info'];
 
   marker.bindPopup(`
     <div style="min-width:180px;font-size:12px">
       <strong style="font-size:13px">${device.name}</strong><br>
-      <span style="font-size:10px; color:${contractObj.color}; font-weight:bold;">● ${contractObj.label}</span><br>
       <span style="color:#aaa">${device.ip}</span><br>
       <span>${device.address || ''}</span>
     </div>
@@ -157,7 +152,7 @@ function addMarker(device) {
 function updateMarkerVisual(id) {
   const d = devices[id];
   if (!d || !markers[id]) return;
-  markers[id].setIcon(makeIcon(d.status, d.contractType));
+  markers[id].setIcon(makeIcon(d.status));
 }
 
 /* ══════════════════════════════════════════════════════
@@ -215,8 +210,6 @@ function updateGlobalStatus() {
 ══════════════════════════════════════════════════════ */
 async function checkDevice(id) {
   const d = devices[id]; if (!d) return;
-  
-  // Ignorer l'appel si l'utilisateur a coupé la supervision ICMP pour ce client
   if (d.pingActive === false) return;
 
   try {
@@ -234,8 +227,6 @@ async function checkDevice(id) {
 
     if (prev !== d.status) {
       d.statusSince = new Date().toISOString();
-      
-      // CREATION DES LOGS EXIGÉS LORS DU CHANGEMENT D'ÉTAT (UP/DOWN + LATENCE CORRESPONDANTE)
       logPingEvent(d.id, d.name, d.ip, d.status, data.latency);
     }
 
@@ -243,7 +234,6 @@ async function checkDevice(id) {
     d.history.push(data.alive ? 1 : 0);
     if (d.history.length > 60) d.history.shift();
 
-    /* Alerte routage mail si down persistant >= 5 minutes */
     if (prev !== 'down' && d.status === 'down') {
       if (d.emailAlert) {
         clearTimeout(d._emailTimer);
@@ -279,18 +269,15 @@ function logPingEvent(clientId, clientName, ip, event, latency) {
     event,
     latency: latency != null ? latency + ' ms' : 'Inaccessible'
   });
-  if (pingLogs.length > 1000) pingLogs.pop(); // Limite mémoire locale
+  if (pingLogs.length > 1000) pingLogs.pop();
   
-  // Mettre à jour le compteur visuel de la barre latérale gauche
   const badge = document.getElementById('alertBadge');
   if (badge) {
     badge.style.display = 'inline';
     badge.textContent = pingLogs.length;
   }
   
-  if (document.getElementById('view-alerts').classList.contains('active')) {
-    renderLogsTable();
-  }
+  renderLogsTable();
 }
 
 function startMonitor(id) {
@@ -339,6 +326,27 @@ async function checkClientEquipments(clientId) {
 }
 
 /* ══════════════════════════════════════════════════════
+   LOGIQUE OUVERTURE MODALS SIDEBAR & GESTION "AUTRE"
+══════════════════════════════════════════════════════ */
+document.getElementById('openAddClientModalBtn').addEventListener('click', () => {
+  openModal('addClientModal');
+});
+
+document.getElementById('openOfficeModalBtn').addEventListener('click', () => {
+  openModal('officeModal');
+});
+
+document.getElementById('addContract').addEventListener('change', (e) => {
+  const selectedOptions = Array.from(e.target.selectedOptions).map(opt => opt.value);
+  document.getElementById('addCustomContractGroup').style.display = selectedOptions.includes('autre') ? 'block' : 'none';
+});
+
+document.getElementById('editContract').addEventListener('change', (e) => {
+  const selectedOptions = Array.from(e.target.selectedOptions).map(opt => opt.value);
+  document.getElementById('editCustomContractGroup').style.display = selectedOptions.includes('autre') ? 'block' : 'none';
+});
+
+/* ══════════════════════════════════════════════════════
    AJOUT CLIENT
 ══════════════════════════════════════════════════════ */
 document.getElementById('addClientBtn').addEventListener('click', async () => {
@@ -348,13 +356,20 @@ document.getElementById('addClientBtn').addEventListener('click', async () => {
   const phone    = document.getElementById('addPhone').value.trim();
   const cEmail   = document.getElementById('addContactEmail').value.trim();
   const port     = document.getElementById('addPort').value.trim();
-  const contract = document.getElementById('addContract').value;
   const interval = parseInt(document.getElementById('addInterval').value) || 30;
   const email    = document.getElementById('addEmail').value.trim();
+  
+  // Gestion multiselect des contrats de maintenance
+  const contractSelect = document.getElementById('addContract');
+  const contracts = Array.from(contractSelect.selectedOptions).map(opt => opt.value);
+  const customContractValue = document.getElementById('addCustomContract').value.trim();
+  
+  // Contrat opérateur manuel
+  const operatorContract = document.getElementById('addOperatorContract').value.trim();
 
   if (!name || !ip) { showToast('⚠️ Nom et IP requis', 'down'); return; }
 
-  showToast('⏳ Positionnement géographiques (Alsace)…', 'info');
+  showToast('⏳ Positionnement géographique (Alsace)…', 'info');
 
   let lat = null, lng = null;
   if (address) {
@@ -367,7 +382,9 @@ document.getElementById('addClientBtn').addEventListener('click', async () => {
     id, name, ip,
     port          : port ? parseInt(port) : null,
     address, phone, contactEmail: cEmail,
-    contractType  : contract,
+    contractType  : contracts, // Tableau de chaînes
+    customContract: customContractValue,
+    operatorContract: operatorContract || 'Non renseigné',
     checkInterval : interval,
     emailAlert    : email,
     pingActive    : true,
@@ -388,11 +405,14 @@ document.getElementById('addClientBtn').addEventListener('click', async () => {
   updateGlobalStatus();
   renderList();
   saveDevices();
+  closeModal('addClientModal');
 
-  /* Vider les entrées */
-  ['addName','addIp','addAddress','addPhone','addContactEmail','addPort','addEmail'].forEach(fid => {
+  /* Vider le formulaire */
+  ['addName','addIp','addAddress','addPhone','addContactEmail','addPort','addEmail','addCustomContract','addOperatorContract'].forEach(fid => {
     document.getElementById(fid).value = '';
   });
+  contractSelect.selectedIndex = -1;
+  document.getElementById('addCustomContractGroup').style.display = 'none';
 
   showToast(`✅ Client ${name} enregistré`, 'up');
 });
@@ -411,6 +431,7 @@ function openDetailPanel(id) {
 }
 
 function closeDetailPanel() {
+  document.getElementById('detailPanel').classList.remove('remove');
   document.getElementById('detailPanel').classList.remove('open');
   selectedId = null;
 }
@@ -441,16 +462,36 @@ function refreshInfoPane(id) {
     statusEl.style.color = d.status === 'up' ? 'var(--up)' : d.status === 'down' ? 'var(--down)' : 'var(--warn)';
   }
 
-  const contractObj = CONTRACT_MAP[d.contractType || 'info'];
-  set('dContractLabel', contractObj.label);
-  
-  const cDot = document.getElementById('detailContractBadge');
-  if (cDot) cDot.style.backgroundColor = contractObj.color;
+  // Rendu dynamique des pastilles multiples uniquement dans la case info (Header Panel de gauche)
+  const badgesContainer = document.getElementById('detailContractBadgesContainer');
+  if (badgesContainer) badgesContainer.innerHTML = '';
+
+  let rawContracts = d.contractType || ['info'];
+  if (!Array.isArray(rawContracts)) rawContracts = [rawContracts]; // Sécurité rétrocompatibilité
+
+  const labelTexts = [];
+  rawContracts.forEach(cKey => {
+    const cObj = CONTRACT_MAP[cKey] || CONTRACT_MAP.info;
+    let labelText = cObj.label;
+    if (cKey === 'autre' && d.customContract) {
+      labelText += ` (${d.customContract})`;
+    }
+    labelTexts.push(labelText);
+
+    // Création de la pastille de couleur avec infobulle native au survol
+    const dot = document.createElement('span');
+    dot.className = `contract-badge-dot ${cObj.class}`;
+    dot.setAttribute('data-tooltip', labelText);
+    badgesContainer.appendChild(dot);
+  });
+
+  set('dContractLabel', labelTexts.join(' | '));
+  set('dOperatorContract', d.operatorContract || 'Non renseigné');
 
   set('dPhone', d.phone || 'Non renseigné');
   set('dContactEmail', d.contactEmail || 'Non renseigné');
   set('dLatency',   d.latency != null ? d.latency + ' ms' : '—');
-  set('dSince',      d.statusSince ? timeSince(d.statusSince) : '—');
+  set('dSince',       d.statusSince ? timeSince(d.statusSince) : '—');
   set('dLastCheck', d.lastCheck ? new Date(d.lastCheck).toLocaleString('fr-FR') : '—');
 
   const uptime = d.history?.length
@@ -464,7 +505,6 @@ function refreshInfoPane(id) {
   document.getElementById('detailIp').textContent   = d.ip + (d.port ? ':' + d.port : '');
   document.getElementById('detailStatusDot').className = 'status-dot-lg ' + (d.status || 'unknown');
   
-  // Synchro checkbox etat options ping
   document.getElementById('dPingToggle').checked = d.pingActive !== false;
 
   renderSparkline(d.history || [], document.getElementById('detailSparkline'));
@@ -735,9 +775,21 @@ function panelEdit() {
   set('editAddress',   d.address || '');
   set('editPhone',     d.phone || '');
   set('editContactEmail', d.contactEmail || '');
-  set('editContract',  d.contractType || 'info');
   set('editEmail',     d.emailAlert || '');
   set('editInterval',  d.checkInterval || 30);
+  set('editCustomContract', d.customContract || '');
+  set('editOperatorContract', d.operatorContract || '');
+  
+  // Synchro choix multiples
+  const selectEl = document.getElementById('editContract');
+  let loadedContracts = d.contractType || ['info'];
+  if (!Array.isArray(loadedContracts)) loadedContracts = [loadedContracts];
+  
+  Array.from(selectEl.options).forEach(opt => {
+    opt.selected = loadedContracts.includes(opt.value);
+  });
+
+  document.getElementById('editCustomContractGroup').style.display = loadedContracts.includes('autre') ? 'block' : 'none';
   
   openModal('editModal');
 }
@@ -751,9 +803,16 @@ async function saveEdit() {
   d.port          = document.getElementById('editPort').value ? parseInt(document.getElementById('editPort').value) : null;
   d.phone         = document.getElementById('editPhone').value.trim();
   d.contactEmail  = document.getElementById('editContactEmail').value.trim();
-  d.contractType  = document.getElementById('editContract').value;
   d.emailAlert    = document.getElementById('editEmail').value.trim();
   d.checkInterval = parseInt(document.getElementById('editInterval').value) || 30;
+  
+  // Sauvegarde choix multiples
+  const selectEl = document.getElementById('editContract');
+  d.contractType = Array.from(selectEl.selectedOptions).map(opt => opt.value);
+  d.customContract = document.getElementById('editCustomContract').value.trim();
+  
+  // Sauvegarde contrat opérateur
+  d.operatorContract = document.getElementById('editOperatorContract').value.trim() || 'Non renseigné';
 
   const newAddr = document.getElementById('editAddress').value.trim();
   if (newAddr !== d.address) {
@@ -805,7 +864,7 @@ document.getElementById('refreshAllBtn').addEventListener('click', () => {
 });
 
 /* ══════════════════════════════════════════════════════
-   RENDU CARTE LISTE CLIENTS
+   RENDU CARTE LISTE CLIENTS + RECHERCHE CLIENT DYNAMIQUE
 ══════════════════════════════════════════════════════ */
 function renderList() {
   const el = document.getElementById('deviceListContainer');
@@ -817,9 +876,17 @@ function renderList() {
     return;
   }
 
-  el.innerHTML = all.map(d => {
+  // Filtrage de recherche textuelle par nom
+  const query = document.getElementById('searchClientInput').value.toLowerCase().trim();
+  const filteredAll = all.filter(d => d.name.toLowerCase().includes(query));
+
+  if (!filteredAll.length) {
+    el.innerHTML = `<div class="empty-state">🔍 Aucun client ne correspond à votre recherche.</div>`;
+    return;
+  }
+
+  el.innerHTML = filteredAll.map(d => {
     const c = d.status === 'up' ? 'var(--up)' : d.status === 'down' ? 'var(--down)' : 'var(--warn)';
-    const contractObj = CONTRACT_MAP[d.contractType || 'info'];
     const uptime = d.history?.length ? Math.round(d.history.filter(v=>v).length / d.history.length * 100) + '%' : '—';
     
     return `
@@ -827,7 +894,6 @@ function renderList() {
         <div class="device-card-header">
           <div>
             <div class="device-card-name">
-              <span class="contract-dot ${contractObj.class}" title="${contractObj.label}"></span>
               ${d.name}
             </div>
             <div class="device-card-ip">${d.ip}${d.port ? ':'+d.port : ''}</div>
@@ -841,13 +907,17 @@ function renderList() {
           <span>📞 ${d.phone || 'N/A'}</span>
           <span>⏱️ ${d.latency != null ? d.latency+' ms' : '—'}</span>
           <span>📊 Uptime: ${uptime}</span>
+          <span style="color:var(--accent);">🌐 Opérateur: ${d.operatorContract || 'Non renseigné'}</span>
         </div>
       </div>`;
   }).join('');
 }
 
+// Input de recherche client temps réel
+document.getElementById('searchClientInput').addEventListener('input', renderList);
+
 /* ══════════════════════════════════════════════════════
-   RENDU ET RENDEMENT DES LOGS AVEC FILTRAGE AVANCÉ
+   RENDU LOGS AVEC FILTRAGE AVANCÉ ET TRI STATUS (UP/DOWN)
 ══════════════════════════════════════════════════════ */
 function renderLogsTable() {
   const tbody = document.getElementById('logsTableBody');
@@ -855,11 +925,13 @@ function renderLogsTable() {
 
   const fClient = document.getElementById('filterClient').value.toLowerCase().trim();
   const fIp = document.getElementById('filterIp').value.toLowerCase().trim();
-  const fDate = document.getElementById('filterDate').value; // format YYYY-MM-DD
+  const fDate = document.getElementById('filterDate').value; 
+  const fStatus = document.getElementById('filterStatus').value; // 'up' ou 'down' ou ''
 
   const filtered = pingLogs.filter(log => {
     if (fClient && !log.clientName.toLowerCase().includes(fClient)) return false;
     if (fIp && !log.ip.toLowerCase().includes(fIp)) return false;
+    if (fStatus && log.event !== fStatus) return false;
     if (fDate) {
       const logDate = log.time.split('T')[0];
       if (logDate !== fDate) return false;
@@ -885,14 +957,16 @@ function renderLogsTable() {
   }).join('');
 }
 
-// Event listeners des inputs de filtrage pour rafraîchissement à la saisie
 document.getElementById('filterClient').addEventListener('input', renderLogsTable);
 document.getElementById('filterIp').addEventListener('input', renderLogsTable);
 document.getElementById('filterDate').addEventListener('change', renderLogsTable);
+document.getElementById('filterStatus').addEventListener('change', renderLogsTable);
+
 document.getElementById('clearFiltersBtn').addEventListener('click', () => {
   document.getElementById('filterClient').value = '';
   document.getElementById('filterIp').value = '';
   document.getElementById('filterDate').value = '';
+  document.getElementById('filterStatus').value = '';
   renderLogsTable();
 });
 

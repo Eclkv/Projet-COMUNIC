@@ -85,44 +85,10 @@
       </button>
     </nav>
 
-    <div id="addSection">
-      <div class="section-title">➕ Nouveau client</div>
-      <input class="field" id="addName" placeholder="Nom du client">
-      <input class="field" id="addIp" placeholder="IP / hôte à pinger">
-      <input class="field" id="addAddress" placeholder="Adresse postale (Alsace)">
-      <input class="field" id="addPhone" placeholder="Téléphone de contact">
-      <input class="field" id="addContactEmail" placeholder="Email de contact client">
-      <input class="field" id="addPort" placeholder="Port TCP (optionnel)">
-      
-      <label class="select-label">Contrat de maintenance</label>
-      <select class="field" id="addContract">
-        <option value="info">🩵 Maintenance Info Standard</option>
-        <option value="it">💙 Maintenance Informatique</option>
-        <option value="telecom">💚 Maintenance Téléphonique</option>
-        <option value="alarm">❤️ Maintenance Alarme</option>
-        <option value="cctv">🤍 Maintenance Vidéo-surveillance</option>
-      </select>
-
-      <label class="select-label">Fréquence des pings</label>
-      <select class="field" id="addInterval">
-        <option value="10">Check / 10 sec</option>
-        <option value="30" selected>Check / 30 sec</option>
-        <option value="60">Check / 1 min</option>
-        <option value="300">Check / 5 min</option>
-        <option value="600">Check / 10 min</option>
-        <option value="900">Check / 15 min</option>
-        <option value="1800">Check / 30 min</option>
-        <option value="3600">Check / 1 heure</option>
-      </select>
-      
-      <input class="field" id="addEmail" placeholder="Email alertes (admin notification)">
-      <button id="addClientBtn">Ajouter le client</button>
-    </div>
-
-    <div id="mapCenterSection">
-      <div class="section-title">🎯 Centrer la carte (Bureau)</div>
-      <input class="field" id="centerAddress" placeholder="Ex: 2 Rue de Boston, Strasbourg">
-      <button id="centerMapBtn">Définir Bureau & Centrer</button>
+    <!-- Boutons d'action rapides de la sidebar -->
+    <div style="padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+      <button id="openAddClientModalBtn" class="sidebar-action-btn">➕ Nouveau Client</button>
+      <button id="openOfficeModalBtn" class="sidebar-action-btn">🏢 Bureau</button>
     </div>
 
   </aside>
@@ -134,6 +100,9 @@
     </div>
 
     <div id="view-list" class="view">
+      <div class="list-search-bar" style="margin-bottom: 12px;">
+        <input type="text" id="searchClientInput" class="field" placeholder="🔍 Rechercher un client par son nom...">
+      </div>
       <div id="deviceListContainer"></div>
     </div>
 
@@ -142,6 +111,11 @@
         <input type="text" id="filterClient" class="field" placeholder="Filtrer par Client...">
         <input type="text" id="filterIp" class="field" placeholder="Filtrer par IP...">
         <input type="date" id="filterDate" class="field">
+        <select id="filterStatus" class="field">
+          <option value="">Tous les statuts</option>
+          <option value="up">UP (En ligne)</option>
+          <option value="down">DOWN (Hors ligne)</option>
+        </select>
         <button id="clearFiltersBtn" class="act-btn">Effacer</button>
       </div>
       <div id="logsTableContainer">
@@ -156,7 +130,7 @@
             </tr>
           </thead>
           <tbody id="logsTableBody">
-            </tbody>
+          </tbody>
         </table>
       </div>
     </div>
@@ -169,7 +143,8 @@
         <span id="detailStatusDot" class="status-dot-lg"></span>
         <div>
           <div style="display:flex; align-items:center; gap:6px;">
-            <span id="detailContractBadge" class="contract-badge-dot"></span>
+            <!-- Conteneur des pastilles de contrats multiples -->
+            <div id="detailContractBadgesContainer" style="display:flex; gap:4px; align-items:center;"></div>
             <span id="detailName">—</span>
           </div>
           <div id="detailIp" style="font-size:11px;color:var(--text-dim)">—</div>
@@ -190,7 +165,11 @@
 
       <div class="dtab-pane active" data-pane="info">
         <div class="detail-row"><span>Statut</span><span id="dStatus">—</span></div>
-        <div class="detail-row"><span>Contrat</span><span id="dContractLabel">—</span></div>
+        <div class="detail-row" style="flex-direction: column; align-items: flex-start; gap: 4px;">
+          <span>Contrat(s)</span>
+          <div id="dContractLabel" style="font-size:12px; color:var(--text); line-height: 1.4;">—</div>
+        </div>
+        <div class="detail-row"><span>Contrat Opérateur</span><span id="dOperatorContract">—</span></div>
         <div class="detail-row"><span>Téléphone</span><span id="dPhone">—</span></div>
         <div class="detail-row"><span>Mail Contact</span><span id="dContactEmail">—</span></div>
         <div class="detail-row"><span>Latence</span><span id="dLatency">—</span></div>
@@ -282,7 +261,90 @@
         </div>
       </div>
 
-    </div></div></div><div id="addEquipModal" class="modal-overlay">
+    </div>
+  </div>
+</div>
+
+<!-- MODAL : AJOUT CLIENT -->
+<div id="addClientModal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Nouveau client</h3>
+      <button class="modal-close" onclick="closeModal('addClientModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <label>Nom du client</label>
+      <input class="field" id="addName" placeholder="Nom du client">
+      <label>IP / hôte à pinger</label>
+      <input class="field" id="addIp" placeholder="IP / hôte à pinger">
+      <label>Adresse postale (Alsace)</label>
+      <input class="field" id="addAddress" placeholder="Adresse postale (Alsace)">
+      <label>Téléphone de contact</label>
+      <input class="field" id="addPhone" placeholder="Téléphone de contact">
+      <label>Email de contact client</label>
+      <input class="field" id="addContactEmail" placeholder="Email de contact client">
+      <label>Port TCP (optionnel)</label>
+      <input class="field" id="addPort" placeholder="Port TCP (optionnel)">
+      
+      <label class="select-label">Contrat de maintenance (Maintenir Ctrl pour choix multiples)</label>
+      <select class="field" id="addContract" multiple style="height: 110px;">
+        <option value="info">🩵 Maintenance Info Standard</option>
+        <option value="it">💙 Maintenance Informatique</option>
+        <option value="telecom">💚 Maintenance Téléphonique</option>
+        <option value="alarm">❤️ Maintenance Alarme</option>
+        <option value="cctv">🤍 Maintenance Vidéo-surveillance</option>
+        <option value="autre">🧡 Contrat Autre</option>
+      </select>
+
+      <div id="addCustomContractGroup" style="display:none; margin-top: 4px;">
+        <label>Précisez le type de contrat (Autre)</label>
+        <input class="field" id="addCustomContract" placeholder="Ex: Maintenance Serveurs Dédiés">
+      </div>
+
+      <label>Type de contrat opérateur</label>
+      <input class="field" id="addOperatorContract" placeholder="Ex: Fibre de secours, 4G, M2M...">
+
+      <label class="select-label">Fréquence des pings</label>
+      <select class="field" id="addInterval">
+        <option value="10">Check / 10 sec</option>
+        <option value="30" selected>Check / 30 sec</option>
+        <option value="60">Check / 1 min</option>
+        <option value="300">Check / 5 min</option>
+        <option value="600">Check / 10 min</option>
+        <option value="900">Check / 15 min</option>
+        <option value="1800">Check / 30 min</option>
+        <option value="3600">Check / 1 heure</option>
+      </select>
+      
+      <label>Email alertes (admin notification)</label>
+      <input class="field" id="addEmail" placeholder="Email alertes (admin notification)">
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('addClientModal')">Annuler</button>
+      <button class="btn-primary" id="addClientBtn">Ajouter le client</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL : BUREAU CONFIGURATION -->
+<div id="officeModal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Définir le Bureau Central</h3>
+      <button class="modal-close" onclick="closeModal('officeModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <label>Adresse postale du Bureau</label>
+      <input class="field" id="centerAddress" placeholder="Ex: 2 Rue de Boston, Strasbourg">
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('officeModal')">Annuler</button>
+      <button class="btn-primary" id="centerMapBtn">Définir & Centrer</button>
+    </div>
+  </div>
+</div>
+
+<div id="addEquipModal" class="modal-overlay">
   <div class="modal-box">
     <div class="modal-header">
       <h3>Ajouter un équipement</h3>
@@ -333,14 +395,23 @@
       <label>Email de Contact</label>
       <input class="field" id="editContactEmail">
       
-      <label>Contrat de maintenance</label>
-      <select class="field" id="editContract">
+      <label>Contrat de maintenance (Maintenir Ctrl pour choix multiples)</label>
+      <select class="field" id="editContract" multiple style="height: 110px;">
         <option value="info">🩵 Maintenance Info Standard</option>
         <option value="it">💙 Maintenance Informatique</option>
         <option value="telecom">💚 Maintenance Téléphonique</option>
         <option value="alarm">❤️ Maintenance Alarme</option>
         <option value="cctv">🤍 Maintenance Vidéo-surveillance</option>
+        <option value="autre">🧡 Contrat Autre</option>
       </select>
+
+      <div id="editCustomContractGroup" style="display:none; margin-top: 4px;">
+        <label>Précisez le type de contrat (Autre)</label>
+        <input class="field" id="editCustomContract">
+      </div>
+
+      <label>Type de contrat opérateur</label>
+      <input class="field" id="editOperatorContract" placeholder="Ex: Fibre, 4G, M2M...">
 
       <label>Email admin de notification</label>
       <input class="field" id="editEmail">
