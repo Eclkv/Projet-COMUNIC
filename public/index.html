@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>COMUNIC · Network Monitor PRO</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════
+     TOPBAR (toujours visible)
+═══════════════════════════════════════════ -->
+<header id="topbar">
+  <div id="topbarLeft">
+    <button id="toggleSidebarBtn" title="Réduire / Afficher la sidebar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="3" y1="6"  x2="21" y2="6"/>
+        <line x1="3" y1="12" x2="21" y2="12"/>
+        <line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </button>
+    <div id="logo">
+      <span class="logo-icon">⚡</span>
+      <span class="logo-text">COMUNIC</span>
+      <span class="logo-sub">Network Monitor</span>
+    </div>
+  </div>
+  <div id="topbarCenter">
+    <div id="globalStatus">
+      <span class="pulse-dot" id="globalDot"></span>
+      <span id="globalLabel">Initialisation...</span>
+    </div>
+  </div>
+  <div id="topbarRight">
+    <div id="clock"></div>
+    <button id="refreshAllBtn" title="Rafraîchir tout">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
+        <path d="M4 12a8 8 0 018-8 8 8 0 016.93 4"/>
+        <polyline points="20 4 20 8 16 8"/>
+        <path d="M20 12a8 8 0 01-8 8 8 8 0 01-6.93-4"/>
+        <polyline points="4 20 4 16 8 16"/>
+      </svg>
+    </button>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════
+     LAYOUT PRINCIPAL
+═══════════════════════════════════════════ -->
+<div id="appBody">
+
+  <!-- SIDEBAR GAUCHE -->
+  <aside id="sidebar">
+
+    <!-- Statistiques -->
+    <div id="statsPanel">
+      <div class="stat-item">
+        <span class="stat-val up" id="statUp">0</span>
+        <span class="stat-label">UP</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-val down" id="statDown">0</span>
+        <span class="stat-label">DOWN</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-val" id="statTotal">0</span>
+        <span class="stat-label">TOTAL</span>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav id="sideNav">
+      <button class="nav-btn active" data-view="topology">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="15" height="15"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/><path d="M2 12h20"/></svg>
+        Carte
+      </button>
+      <button class="nav-btn" data-view="list">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="15" height="15"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        Clients
+      </button>
+      <button class="nav-btn" data-view="alerts">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="15" height="15"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+        Alertes
+        <span class="badge" id="alertBadge" style="display:none">0</span>
+      </button>
+    </nav>
+
+    <!-- Formulaire ajout client -->
+    <div id="addSection">
+      <div class="section-title">➕ Nouveau client</div>
+      <input class="field" id="addName"     placeholder="Nom du client">
+      <input class="field" id="addIp"       placeholder="IP / hôte à pinger">
+      <input class="field" id="addAddress"  placeholder="Adresse postale (géoloc)">
+      <input class="field" id="addPort"     placeholder="Port TCP (optionnel)">
+      <select class="field" id="addInterval">
+        <option value="10">Check / 10s</option>
+        <option value="30" selected>Check / 30s</option>
+        <option value="60">Check / 1 min</option>
+        <option value="300">Check / 5 min</option>
+      </select>
+      <input class="field" id="addEmail" placeholder="Email alertes (optionnel)">
+      <button id="addClientBtn">Ajouter le client</button>
+    </div>
+
+    <!-- Centre de carte -->
+    <div id="mapCenterSection">
+      <div class="section-title">🎯 Centrer la carte</div>
+      <input class="field" id="centerAddress" placeholder="Ex: 67000 Strasbourg">
+      <button id="centerMapBtn">Centrer</button>
+    </div>
+
+  </aside>
+
+  <!-- ZONE PRINCIPALE -->
+  <main id="main">
+
+    <!-- VUE CARTE -->
+    <div id="view-topology" class="view active">
+      <div id="map"></div>
+    </div>
+
+    <!-- VUE LISTE -->
+    <div id="view-list" class="view">
+      <div id="deviceListContainer"></div>
+    </div>
+
+    <!-- VUE ALERTES -->
+    <div id="view-alerts" class="view"></div>
+
+  </main>
+
+  <!-- PANNEAU DÉTAIL CLIENT (slide depuis la droite) -->
+  <div id="detailPanel">
+    <div id="detailPanelHeader">
+      <div id="detailPanelTitle">
+        <span id="detailStatusDot" class="status-dot-lg"></span>
+        <div>
+          <div id="detailName">—</div>
+          <div id="detailIp" style="font-size:11px;color:var(--text-dim)">—</div>
+        </div>
+      </div>
+      <button id="closePanelBtn">✕</button>
+    </div>
+
+    <!-- Onglets internes -->
+    <div id="detailTabs">
+      <button class="dtab active" data-tab="info">Infos</button>
+      <button class="dtab" data-tab="plan">Plan</button>
+      <button class="dtab" data-tab="topo">Topologie</button>
+      <button class="dtab" data-tab="equip">Équipements</button>
+      <button class="dtab" data-tab="itinerary">Itinéraire</button>
+    </div>
+
+    <div id="detailTabContent">
+
+      <!-- ONGLET INFO -->
+      <div class="dtab-pane active" data-pane="info">
+        <div class="detail-row"><span>Statut</span><span id="dStatus">—</span></div>
+        <div class="detail-row"><span>Latence</span><span id="dLatency">—</span></div>
+        <div class="detail-row"><span>Depuis</span><span id="dSince">—</span></div>
+        <div class="detail-row"><span>Dernier check</span><span id="dLastCheck">—</span></div>
+        <div class="detail-row"><span>Uptime (60 der.)</span><span id="dUptime">—</span></div>
+        <div class="detail-row"><span>Intervalle</span><span id="dInterval">—</span></div>
+        <div class="detail-row"><span>Adresse</span><span id="dAddress" style="text-align:right;max-width:160px;font-size:11px">—</span></div>
+        <div style="margin-top:14px">
+          <div class="sparkline-label">Historique diagnostics</div>
+          <div id="detailSparkline"></div>
+        </div>
+        <div id="detailActions">
+          <button class="act-btn" onclick="panelRefresh()">🔄 Ping</button>
+          <button class="act-btn" onclick="panelEdit()">✏️ Modifier</button>
+          <button class="act-btn danger" onclick="panelDelete()">🗑️ Supprimer</button>
+        </div>
+      </div>
+
+      <!-- ONGLET PLAN -->
+      <div class="dtab-pane" data-pane="plan">
+        <div class="plan-toolbar">
+          <button class="act-btn" onclick="triggerUpload('floorplan')">📁 Importer plan</button>
+          <button class="act-btn" id="clearFloorplanBtn" onclick="clearImage('floorplan')" style="display:none">🗑️ Effacer</button>
+        </div>
+        <div id="floorplanArea">
+          <div id="floorplanEmpty" class="empty-state">
+            <div style="font-size:36px">🏢</div>
+            <div>Aucun plan configuré</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:4px">Importez une image (plan d'évacuation, schéma réseau…)</div>
+          </div>
+          <div id="floorplanImgWrap" style="display:none;position:relative;">
+            <img id="floorplanImg" src="" alt="Plan client" style="width:100%;border-radius:6px">
+            <!-- Zones cliquables posées par JS -->
+            <div id="floorplanZones"></div>
+          </div>
+        </div>
+        <input type="file" id="uploadFloorplan" accept="image/*" style="display:none">
+      </div>
+
+      <!-- ONGLET TOPOLOGIE -->
+      <div class="dtab-pane" data-pane="topo">
+        <div class="plan-toolbar">
+          <button class="act-btn" onclick="triggerUpload('topo')">📁 Importer schéma</button>
+          <button class="act-btn" id="clearTopoBtn" onclick="clearImage('topo')" style="display:none">🗑️ Effacer</button>
+        </div>
+        <div id="topoArea">
+          <div id="topoEmpty" class="empty-state">
+            <div style="font-size:36px">🔗</div>
+            <div>Aucune topologie configurée</div>
+          </div>
+          <div id="topoImgWrap" style="display:none">
+            <img id="topoImg" src="" alt="Topologie réseau" style="width:100%;border-radius:6px">
+          </div>
+        </div>
+        <input type="file" id="uploadTopo" accept="image/*" style="display:none">
+      </div>
+
+      <!-- ONGLET ÉQUIPEMENTS -->
+      <div class="dtab-pane" data-pane="equip">
+        <div class="plan-toolbar">
+          <button class="act-btn" onclick="openAddEquipModal()">➕ Ajouter équipement</button>
+        </div>
+        <div id="equipList">
+          <div class="empty-state">
+            <div style="font-size:36px">🖥️</div>
+            <div>Aucun équipement enregistré</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ONGLET ITINÉRAIRE -->
+      <div class="dtab-pane" data-pane="itinerary">
+        <div id="itineraryInfo" class="empty-state">
+          <div style="font-size:36px">🗺️</div>
+          <div>Calcul de l'itinéraire…</div>
+        </div>
+        <div id="itineraryMap" style="height:280px;border-radius:8px;overflow:hidden;display:none"></div>
+        <div id="itineraryDetails" style="display:none;margin-top:12px">
+          <div class="detail-row"><span>Distance</span><span id="itiDistance">—</span></div>
+          <div class="detail-row"><span>Durée estimée</span><span id="itiDuration">—</span></div>
+          <a id="itiGoogleLink" href="#" target="_blank" class="act-btn" style="display:block;text-align:center;margin-top:10px;text-decoration:none">
+            Ouvrir dans Google Maps
+          </a>
+        </div>
+      </div>
+
+    </div><!-- /detailTabContent -->
+  </div><!-- /detailPanel -->
+
+</div><!-- /appBody -->
+
+<!-- ═══════════════════════════════════════════
+     MODAL AJOUT ÉQUIPEMENT
+═══════════════════════════════════════════ -->
+<div id="addEquipModal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Ajouter un équipement</h3>
+      <button class="modal-close" onclick="closeModal('addEquipModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <label>Nom</label>
+      <input class="field" id="equipName" placeholder="Ex: Switch HP 24 ports">
+      <label>IP / hôte</label>
+      <input class="field" id="equipIp" placeholder="192.168.1.x">
+      <label>Type</label>
+      <select class="field" id="equipType">
+        <option>Switch</option>
+        <option>Routeur</option>
+        <option>Firewall</option>
+        <option>Serveur</option>
+        <option>NAS</option>
+        <option>Imprimante</option>
+        <option>Autre</option>
+      </select>
+      <label>Note</label>
+      <input class="field" id="equipNote" placeholder="Info supplémentaire…">
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('addEquipModal')">Annuler</button>
+      <button class="btn-primary" onclick="saveEquip()">Ajouter</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     MODAL MODIFICATION CLIENT
+═══════════════════════════════════════════ -->
+<div id="editModal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Modifier le client</h3>
+      <button class="modal-close" onclick="closeModal('editModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <label>Nom du client</label>
+      <input class="field" id="editName">
+      <label>IP / hôte à pinger</label>
+      <input class="field" id="editIp">
+      <label>Port TCP</label>
+      <input class="field" id="editPort" placeholder="Optionnel">
+      <label>Adresse postale</label>
+      <input class="field" id="editAddress">
+      <label>Email alertes</label>
+      <input class="field" id="editEmail">
+      <label>Intervalle (secondes)</label>
+      <select class="field" id="editInterval">
+        <option value="10">10s</option>
+        <option value="30">30s</option>
+        <option value="60">1 min</option>
+        <option value="300">5 min</option>
+      </select>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('editModal')">Annuler</button>
+      <button class="btn-primary" onclick="saveEdit()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     MODAL BAIE RACK (plein écran)
+═══════════════════════════════════════════ -->
+<div id="rackModal" class="modal-overlay">
+  <div class="modal-box modal-large">
+    <div class="modal-header">
+      <h3 id="rackModalTitle">Baie Rack</h3>
+      <button class="modal-close" onclick="closeModal('rackModal')">✕</button>
+    </div>
+    <div class="modal-body" style="padding:0;position:relative;min-height:400px">
+      <div id="rackEmpty" class="empty-state" style="padding:60px 20px">
+        <div style="font-size:36px">🗄️</div>
+        <div>Aucune photo de baie</div>
+        <button class="act-btn" style="margin-top:12px" onclick="triggerUpload('rack')">📁 Importer photo</button>
+      </div>
+      <div id="rackImgWrap" style="display:none;position:relative">
+        <img id="rackImg" src="" alt="Baie rack" style="width:100%;max-height:70vh;object-fit:contain">
+        <div id="rackLeds"></div>
+      </div>
+    </div>
+    <div class="modal-footer" id="rackFooter" style="display:none">
+      <button class="btn-ghost" onclick="triggerUpload('rack')">Changer la photo</button>
+      <button class="btn-ghost" onclick="clearImage('rack')">Effacer</button>
+      <button class="btn-primary" onclick="addRackLed()">+ Ajouter une LED</button>
+    </div>
+    <input type="file" id="uploadRack" accept="image/*" style="display:none">
+  </div>
+</div>
+
+<div id="toastContainer"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
