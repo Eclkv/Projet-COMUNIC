@@ -51,26 +51,6 @@ function tcpCheck(host, port, timeout = 4000) {
   });
 }
 
-/* ── HTTP(S) Check ── */
-function httpCheck(url, timeout = 6000) {
-  return new Promise(resolve => {
-    const start = Date.now();
-    const lib   = url.startsWith('https') ? https : http;
-
-    const req = lib.get(url, { timeout }, res => {
-      res.destroy();
-      resolve({
-        alive  : res.statusCode < 500,
-        latency: Date.now() - start,
-        code   : res.statusCode,
-      });
-    });
-
-    req.on('timeout', () => { req.destroy(); resolve({ alive: false, latency: null }); });
-    req.on('error',   () => resolve({ alive: false, latency: null }));
-  });
-}
-
 /* ── API : Check générique ── */
 app.post('/check', async (req, res) => {
   const { ip, port } = req.body;
@@ -90,6 +70,13 @@ app.post('/check', async (req, res) => {
     latency : result.latency,
     time    : new Date().toISOString(),
   });
+});
+
+/* ── API : Envoi alerte email (Simulation / Log interne) ── */
+app.post('/alert-email', (req, res) => {
+  const { to, device, ip, type, time } = req.body;
+  console.log(`[EMAIL ALERT] To: ${to} | Client: ${device} (${ip}) | State: ${type.toUpperCase()} at ${time}`);
+  res.json({ success: true, msg: 'Email simulé envoyé avec succès' });
 });
 
 /* ── API : Géocodage proxy (évite CORS Nominatim) ── */
