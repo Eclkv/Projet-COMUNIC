@@ -3,6 +3,20 @@
    ===================================================== */
 
 /* ══════════════════════════════════════════════════════
+   AUTH HELPERS
+══════════════════════════════════════════════════════ */
+function getToken() {
+  return sessionStorage.getItem('comunic_token') || '';
+}
+
+function authHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'x-auth-token': getToken(),
+  };
+}
+
+/* ══════════════════════════════════════════════════════
    STATE
 ══════════════════════════════════════════════════════ */
 const devices      = {};   // { [id]: deviceObj }
@@ -113,7 +127,6 @@ document.getElementById('centerMapBtn').addEventListener('click', async () => {
   }
 });
 
-/* Les pastilles de contrats n'apparaissent plus dans les marqueurs de la carte */
 function makeIcon(status) {
   const color = status === 'up' ? '#10b981' : status === 'down' ? '#ef4444' : '#f59e0b';
   
@@ -160,7 +173,9 @@ function updateMarkerVisual(id) {
 ══════════════════════════════════════════════════════ */
 async function geocode(address) {
   try {
-    const res  = await fetch(`/geocode?q=${encodeURIComponent(address)}`);
+    const res  = await fetch(`/geocode?q=${encodeURIComponent(address)}`, {
+      headers: { 'x-auth-token': getToken() },
+    });
     const data = await res.json();
     if (data.lat && data.lng) return data;
     return null;
@@ -215,7 +230,7 @@ async function checkDevice(id) {
   try {
     const res  = await fetch('/check', {
       method : 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders(),
       body   : JSON.stringify({ ip: d.ip, port: d.port || null }),
     });
     const data = await res.json();
@@ -239,7 +254,7 @@ async function checkDevice(id) {
         clearTimeout(d._emailTimer);
         d._emailTimer = setTimeout(() => {
           if (devices[id]?.status === 'down') sendEmailAlert(d, 'down');
-        }, 5 * 60 * 1000); 
+        }, 5 * 60 * 1000);
       }
     }
     
@@ -315,7 +330,7 @@ async function checkClientEquipments(clientId) {
     try {
       const res  = await fetch('/check', {
         method : 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body   : JSON.stringify({ ip: eq.ip }),
       });
       const data = await res.json();
@@ -359,12 +374,9 @@ document.getElementById('addClientBtn').addEventListener('click', async () => {
   const interval = parseInt(document.getElementById('addInterval').value) || 30;
   const email    = document.getElementById('addEmail').value.trim();
   
-  // Gestion multiselect des contrats de maintenance
   const contractSelect = document.getElementById('addContract');
   const contracts = Array.from(contractSelect.selectedOptions).map(opt => opt.value);
   const customContractValue = document.getElementById('addCustomContract').value.trim();
-  
-  // Contrat opérateur manuel
   const operatorContract = document.getElementById('addOperatorContract').value.trim();
 
   if (!name || !ip) { showToast('⚠️ Nom et IP requis', 'down'); return; }
@@ -382,7 +394,7 @@ document.getElementById('addClientBtn').addEventListener('click', async () => {
     id, name, ip,
     port          : port ? parseInt(port) : null,
     address, phone, contactEmail: cEmail,
-    contractType  : contracts, // Tableau de chaînes
+    contractType  : contracts,
     customContract: customContractValue,
     operatorContract: operatorContract || 'Non renseigné',
     checkInterval : interval,
@@ -394,6 +406,7 @@ document.getElementById('addClientBtn').addEventListener('click', async () => {
     latency       : null,
     lastCheck     : null,
     equipments    : [],
+    lat, lng,
   };
 
   devices[id] = device;
@@ -407,7 +420,6 @@ document.getElementById('addClientBtn').addEventListener('click', async () => {
   saveDevices();
   closeModal('addClientModal');
 
-  /* Vider le formulaire */
   ['addName','addIp','addAddress','addPhone','addContactEmail','addPort','addEmail','addCustomContract','addOperatorContract'].forEach(fid => {
     document.getElementById(fid).value = '';
   });
@@ -431,7 +443,6 @@ function openDetailPanel(id) {
 }
 
 function closeDetailPanel() {
-  document.getElementById('detailPanel').classList.remove('remove');
   document.getElementById('detailPanel').classList.remove('open');
   selectedId = null;
 }
@@ -462,12 +473,11 @@ function refreshInfoPane(id) {
     statusEl.style.color = d.status === 'up' ? 'var(--up)' : d.status === 'down' ? 'var(--down)' : 'var(--warn)';
   }
 
-  // Rendu dynamique des pastilles multiples uniquement dans la case info (Header Panel de gauche)
   const badgesContainer = document.getElementById('detailContractBadgesContainer');
   if (badgesContainer) badgesContainer.innerHTML = '';
 
   let rawContracts = d.contractType || ['info'];
-  if (!Array.isArray(rawContracts)) rawContracts = [rawContracts]; // Sécurité rétrocompatibilité
+  if (!Array.isArray(rawContracts)) rawContracts = [rawContracts];
 
   const labelTexts = [];
   rawContracts.forEach(cKey => {
@@ -478,7 +488,6 @@ function refreshInfoPane(id) {
     }
     labelTexts.push(labelText);
 
-    // Création de la pastille de couleur avec infobulle native au survol
     const dot = document.createElement('span');
     dot.className = `contract-badge-dot ${cObj.class}`;
     dot.setAttribute('data-tooltip', labelText);
@@ -780,7 +789,6 @@ function panelEdit() {
   set('editCustomContract', d.customContract || '');
   set('editOperatorContract', d.operatorContract || '');
   
-  // Synchro choix multiples
   const selectEl = document.getElementById('editContract');
   let loadedContracts = d.contractType || ['info'];
   if (!Array.isArray(loadedContracts)) loadedContracts = [loadedContracts];
@@ -806,12 +814,9 @@ async function saveEdit() {
   d.emailAlert    = document.getElementById('editEmail').value.trim();
   d.checkInterval = parseInt(document.getElementById('editInterval').value) || 30;
   
-  // Sauvegarde choix multiples
   const selectEl = document.getElementById('editContract');
   d.contractType = Array.from(selectEl.selectedOptions).map(opt => opt.value);
   d.customContract = document.getElementById('editCustomContract').value.trim();
-  
-  // Sauvegarde contrat opérateur
   d.operatorContract = document.getElementById('editOperatorContract').value.trim() || 'Non renseigné';
 
   const newAddr = document.getElementById('editAddress').value.trim();
@@ -876,7 +881,6 @@ function renderList() {
     return;
   }
 
-  // Filtrage de recherche textuelle par nom
   const query = document.getElementById('searchClientInput').value.toLowerCase().trim();
   const filteredAll = all.filter(d => d.name.toLowerCase().includes(query));
 
@@ -913,7 +917,6 @@ function renderList() {
   }).join('');
 }
 
-// Input de recherche client temps réel
 document.getElementById('searchClientInput').addEventListener('input', renderList);
 
 /* ══════════════════════════════════════════════════════
@@ -925,8 +928,8 @@ function renderLogsTable() {
 
   const fClient = document.getElementById('filterClient').value.toLowerCase().trim();
   const fIp = document.getElementById('filterIp').value.toLowerCase().trim();
-  const fDate = document.getElementById('filterDate').value; 
-  const fStatus = document.getElementById('filterStatus').value; // 'up' ou 'down' ou ''
+  const fDate = document.getElementById('filterDate').value;
+  const fStatus = document.getElementById('filterStatus').value;
 
   const filtered = pingLogs.filter(log => {
     if (fClient && !log.clientName.toLowerCase().includes(fClient)) return false;
@@ -977,7 +980,7 @@ async function sendEmailAlert(device, type) {
   try {
     await fetch('/alert-email', {
       method : 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders(),
       body   : JSON.stringify({
         to: device.emailAlert, device: device.name,
         ip: device.ip, type, time: new Date().toISOString(),
@@ -1085,6 +1088,32 @@ function loadDevices() {
 }
 
 /* ══════════════════════════════════════════════════════
+   BADGE UTILISATEUR + LOGOUT
+══════════════════════════════════════════════════════ */
+function initUserBadge() {
+  const username = sessionStorage.getItem('comunic_username') || '—';
+  const nameLabel = document.getElementById('userNameLabel');
+  const avatar    = document.getElementById('userAvatar');
+
+  if (nameLabel) nameLabel.textContent = username;
+  if (avatar)    avatar.textContent    = username.charAt(0).toUpperCase();
+}
+
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  try {
+    await fetch('/auth/logout', {
+      method : 'POST',
+      headers: authHeaders(),
+    });
+  } catch (e) { /* pas bloquant */ }
+
+  sessionStorage.removeItem('comunic_token');
+  sessionStorage.removeItem('comunic_username');
+  sessionStorage.removeItem('comunic_role');
+  window.location.href = '/auth.html';
+});
+
+/* ══════════════════════════════════════════════════════
    INITIALISATION (BOOT)
 ══════════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', () => {
@@ -1093,6 +1122,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (savedBureau) Object.assign(BUREAU, JSON.parse(savedBureau));
   } catch(e) {}
 
+  initUserBadge();
   initMap();
   loadDevices();
 

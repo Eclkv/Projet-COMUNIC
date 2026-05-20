@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>COMUNIC · Authentification</title>
+  <link rel="stylesheet" href="style.css">
+  <script>
+    // Si déjà connecté, on redirige vers la page principale
+    if (sessionStorage.getItem('comunic_token')) {
+      window.location.href = '/';
+    }
+  </script>
+</head>
+<body class="auth-body">
+
+  <div class="auth-container">
+    <div class="auth-card">
+
+      <div class="auth-logo">
+        <div class="logo-icon">⚡</div>
+        <h1>COMUNIC</h1>
+        <p class="auth-subtitle">Network Monitor PRO</p>
+      </div>
+
+      <!-- Onglets -->
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-tab="login">Connexion</button>
+        <button class="auth-tab" data-tab="register">Inscription</button>
+      </div>
+
+      <!-- Formulaire LOGIN -->
+      <form id="loginForm" class="auth-form active">
+        <div class="form-group">
+          <label for="loginEmail">Email</label>
+          <input type="email" id="loginEmail" required autocomplete="email" placeholder="nom@comunic.fr">
+        </div>
+        <div class="form-group">
+          <label for="loginPassword">Mot de passe</label>
+          <input type="password" id="loginPassword" required autocomplete="current-password" placeholder="••••••••">
+        </div>
+        <button type="submit" class="auth-btn">Se connecter</button>
+      </form>
+
+      <!-- Formulaire REGISTER -->
+      <form id="registerForm" class="auth-form">
+        <div class="form-group">
+          <label for="regUsername">Nom d'utilisateur</label>
+          <input type="text" id="regUsername" required autocomplete="username" placeholder="jdupont">
+        </div>
+        <div class="form-group">
+          <label for="regEmail">Email</label>
+          <input type="email" id="regEmail" required autocomplete="email" placeholder="nom@comunic.fr">
+        </div>
+        <div class="form-group">
+          <label for="regPassword">Mot de passe</label>
+          <input type="password" id="regPassword" required autocomplete="new-password" minlength="6" placeholder="6 caractères min.">
+        </div>
+        <div class="form-group">
+          <label for="regPasswordConfirm">Confirmer le mot de passe</label>
+          <input type="password" id="regPasswordConfirm" required autocomplete="new-password" placeholder="••••••••">
+        </div>
+        <button type="submit" class="auth-btn">Créer mon compte</button>
+      </form>
+
+      <div id="authMessage" class="auth-message"></div>
+
+      <p class="auth-footer">
+        🔒 Prototype local · En prod : authentification AD/LDAP
+      </p>
+
+    </div>
+  </div>
+
+  <script>
+    const tabs       = document.querySelectorAll('.auth-tab');
+    const forms      = document.querySelectorAll('.auth-form');
+    const msgBox     = document.getElementById('authMessage');
+
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        forms.forEach(f => f.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.tab + 'Form').classList.add('active');
+        msgBox.textContent = '';
+        msgBox.className = 'auth-message';
+      });
+    });
+
+    function showMessage(text, type = 'error') {
+      msgBox.textContent = text;
+      msgBox.className = 'auth-message ' + type;
+    }
+
+    /* ── LOGIN ── */
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email    = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPassword').value;
+      try {
+        const r = await fetch('/auth/login', {
+          method : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body   : JSON.stringify({ email, password })
+        });
+        const data = await r.json();
+        if (!r.ok) return showMessage(data.error || 'Erreur de connexion');
+
+        sessionStorage.setItem('comunic_token',    data.token);
+        sessionStorage.setItem('comunic_username', data.username);
+        sessionStorage.setItem('comunic_role',     data.role);
+        showMessage('Connexion réussie, redirection...', 'success');
+        setTimeout(() => window.location.href = '/', 600);
+      } catch (err) {
+        showMessage('Erreur réseau : ' + err.message);
+      }
+    });
+
+    /* ── REGISTER ── */
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username  = document.getElementById('regUsername').value.trim();
+      const email     = document.getElementById('regEmail').value.trim();
+      const password  = document.getElementById('regPassword').value;
+      const confirm   = document.getElementById('regPasswordConfirm').value;
+
+      if (password !== confirm)
+        return showMessage('Les mots de passe ne correspondent pas');
+
+      try {
+        const r = await fetch('/auth/register', {
+          method : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body   : JSON.stringify({ username, email, password })
+        });
+        const data = await r.json();
+        if (!r.ok) return showMessage(data.error || 'Erreur d\'inscription');
+
+        sessionStorage.setItem('comunic_token',    data.token);
+        sessionStorage.setItem('comunic_username', data.username);
+        sessionStorage.setItem('comunic_role',     data.role);
+        showMessage(`Compte créé (${data.role}), redirection...`, 'success');
+        setTimeout(() => window.location.href = '/', 800);
+      } catch (err) {
+        showMessage('Erreur réseau : ' + err.message);
+      }
+    });
+  </script>
+</body>
+</html>

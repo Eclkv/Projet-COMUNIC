@@ -2,6 +2,14 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
+
+  <!-- 🔒 GUARD AUTH : redirection ultra-rapide si pas de token -->
+  <script>
+    if (!sessionStorage.getItem('comunic_token')) {
+      window.location.href = '/auth.html';
+    }
+  </script>
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>COMUNIC · Network Monitor PRO</title>
 
@@ -47,6 +55,12 @@
         <polyline points="4 20 4 16 8 16"/>
       </svg>
     </button>
+
+    <!-- 🆕 BADGE UTILISATEUR + LOGOUT -->
+    <div id="userBadge">
+      <span id="userNameLabel">—</span>
+      <button id="logoutBtn" title="Déconnexion">⏻</button>
+    </div>
   </div>
 </header>
 
@@ -143,7 +157,6 @@
         <span id="detailStatusDot" class="status-dot-lg"></span>
         <div>
           <div style="display:flex; align-items:center; gap:6px;">
-            <!-- Conteneur des pastilles de contrats multiples -->
             <div id="detailContractBadgesContainer" style="display:flex; gap:4px; align-items:center;"></div>
             <span id="detailName">—</span>
           </div>
@@ -178,7 +191,7 @@
         <div class="detail-row"><span>Uptime (60 der.)</span><span id="dUptime">—</span></div>
         <div class="detail-row"><span>Intervalle</span><span id="dInterval">—</span></div>
         <div class="detail-row"><span>Adresse</span><span id="dAddress" style="text-align:right;max-width:160px;font-size:11px">—</span></div>
-        
+
         <div class="options-group" style="margin-top: 12px; padding: 10px; background: var(--bg3); border-radius:6px; border: 1px solid var(--border)">
           <div class="section-title" style="margin-bottom:6px;">⚙️ Options de supervision</div>
           <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px;">
@@ -285,7 +298,7 @@
       <input class="field" id="addContactEmail" placeholder="Email de contact client">
       <label>Port TCP (optionnel)</label>
       <input class="field" id="addPort" placeholder="Port TCP (optionnel)">
-      
+
       <label class="select-label">Contrat de maintenance (Maintenir Ctrl pour choix multiples)</label>
       <select class="field" id="addContract" multiple style="height: 110px;">
         <option value="info">🩵 Maintenance Info Standard</option>
@@ -315,7 +328,7 @@
         <option value="1800">Check / 30 min</option>
         <option value="3600">Check / 1 heure</option>
       </select>
-      
+
       <label>Email alertes (admin notification)</label>
       <input class="field" id="addEmail" placeholder="Email alertes (admin notification)">
     </div>
@@ -394,7 +407,7 @@
       <input class="field" id="editPhone">
       <label>Email de Contact</label>
       <input class="field" id="editContactEmail">
-      
+
       <label>Contrat de maintenance (Maintenir Ctrl pour choix multiples)</label>
       <select class="field" id="editContract" multiple style="height: 110px;">
         <option value="info">🩵 Maintenance Info Standard</option>
