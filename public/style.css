@@ -591,18 +591,16 @@ body.sidebar-hidden #sidebar {
 /* =====================================================
    🔐 AUTHENTIFICATION — auth.html
    ===================================================== */
-
-/* Override body pour la page auth uniquement */
-body.auth-page {
-  overflow: auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
+body.auth-body {
+  overflow: auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 100vh !important;
   background:
     radial-gradient(circle at 20% 20%, rgba(0,212,255,0.07), transparent 40%),
     radial-gradient(circle at 80% 80%, rgba(255,200,0,0.05), transparent 40%),
-    var(--bg);
+    var(--bg) !important;
 }
 
 .auth-container {
@@ -682,33 +680,35 @@ body.auth-page {
   flex-direction: column;
   gap: 14px;
 }
-.auth-form.active { display: flex; }
 
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+/* 🎯 CORRECTION DIRECTE : Forcer la visibilité complète des éléments de saisie actifs */
+.auth-form.active { 
+  display: flex !important; 
 }
-.form-group label {
-  font-size: 10px;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: .08em;
+
+.auth-form.active .form-group {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
 }
-.form-group input {
-  width: 100%;
-  padding: 10px 12px;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 13px;
-  outline: none;
-  transition: border-color 0.15s;
+
+.auth-form.active .form-group label {
+  display: block !important;
+  font-size: 10px !important;
+  color: var(--text-dim) !important;
+  text-transform: uppercase !important;
+  letter-spacing: .08em !important;
 }
-.form-group input:focus { border-color: var(--accent); }
-.form-group input::placeholder { color: var(--text-dim); }
+
+.auth-form.active .form-group input {
+  display: block !important;
+  width: 100% !important;
+  padding: 10px 12px !important;
+  background: var(--bg3) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
+  color: var(--text) !important;
+}
 
 /* Bouton submit auth */
 .auth-btn {
@@ -768,7 +768,6 @@ body.auth-page {
   color: #4ade80;
 }
 
-/* Footer auth */
 .auth-footer {
   margin-top: 24px;
   text-align: center;
@@ -781,7 +780,6 @@ body.auth-page {
 /* =====================================================
    👤 BADGE UTILISATEUR — topbar de index.html
    ===================================================== */
-
 #userBadge {
   display: flex;
   align-items: center;
@@ -829,6 +827,32 @@ body.auth-page {
 #logoutBtn:hover {
   color: var(--down);
   background: rgba(239,68,68,0.1);
+}
+
+/* =====================================================
+   🎨 MARQUEURS & CALQUES MULTI-PLANS INTERACTIFS
+   ===================================================== */
+#layerPlanMarkers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+#layerPlanMarkers div {
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+#layerPlanMarkers div:hover {
+  transform: translate(-50%, -50%) scale(1.25) !important;
+  z-index: 999;
+}
+.pc-spec-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+input[type="radio"] {
+  accent-color: var(--accent);
+  margin-right: 5px;
+  cursor: pointer;
 }
 
 /* Responsive */

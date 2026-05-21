@@ -23,7 +23,7 @@ const devices      = {};   // { [id]: deviceObj }
 const monitors     = {};   // { [id]: intervalId }
 const pingLogs     = [];   // [ {time, clientId, clientName, ip, event, latency} ]
 const markers      = {};   // { [id]: L.marker }
-const clientImages = {};   // { [id]: { floorplan, topo, rack } }
+const clientImages = {};   // { [id]: { floorplan, topo, rack, info, video, alarm, telecom } }
 
 let selectedId  = null;
 let editingId   = null;
@@ -31,6 +31,12 @@ let map         = null;
 let itiMap      = null;   // Carte itinéraire
 let currentEquipClientId = null;
 let officeMarker = null;   // Marqueur bureau rouge
+
+// Gestion multicouche des plans et placement d'éléments
+let currentPlanLayer = 'info'; // Couches : 'info', 'video', 'alarm', 'telecom'
+let isPlacingComponent = false;
+let pendingCoords = null;
+let currentSelectedComponentIdx = null;
 
 /* ── Adresse bureau par défaut (Strasbourg Alsace) ── */
 let BUREAU = { lat: 48.5734, lng: 7.7521, label: 'COMUNIC - Bureau Alsace' };
@@ -362,6 +368,40 @@ document.getElementById('editContract').addEventListener('change', (e) => {
 });
 
 /* ══════════════════════════════════════════════════════
+   FONCTION INTERNE DE SECURITE ROLES ET PERMISSIONS
+══════════════════════════════════════════════════════ */
+function checkUserRolePermissions() {
+  const role = sessionStorage.getItem('comunic_role') || 'stagiaire';
+  
+  const btnAdmin = document.getElementById('openAdminUsersModalBtn');
+  const btnAddClient = document.getElementById('openAddClientModalBtn');
+  const btnDeleteClient = document.querySelector('#detailActions .danger');
+  const btnEditClient = document.querySelector('#detailActions button[onclick="panelEdit()"]');
+  const btnAddComp = document.getElementById('addLayerComponentBtn');
+
+  if (btnAdmin) {
+    btnAdmin.style.display = (role === 'admin' || role === 'responsable') ? 'block' : 'none';
+  }
+
+  if (role === 'stagiaire') {
+    if (btnAddClient) btnAddClient.style.display = 'block';
+    if (btnEditClient) btnEditClient.style.display = 'inline-block';
+    if (btnDeleteClient) btnDeleteClient.style.display = 'none'; 
+    if (btnAddComp) btnAddComp.style.display = 'block';
+  } else if (role === 'technicien' || role === 'responsable' || role === 'admin') {
+    if (btnAddClient) btnAddClient.style.display = 'block';
+    if (btnEditClient) btnEditClient.style.display = 'inline-block';
+    if (btnDeleteClient) btnDeleteClient.style.display = 'inline-block'; 
+    if (btnAddComp) btnAddComp.style.display = 'block';
+  } else {
+    if (btnAddClient) btnAddClient.style.display = 'none';
+    if (btnEditClient) btnEditClient.style.display = 'none';
+    if (btnDeleteClient) btnDeleteClient.style.display = 'none';
+    if (btnAddComp) btnAddComp.style.display = 'none';
+  }
+}
+
+/* ══════════════════════════════════════════════════════
    AJOUT CLIENT
 ══════════════════════════════════════════════════════ */
 document.getElementById('addClientBtn').addEventListener('click', async () => {
@@ -406,11 +446,12 @@ document.getElementById('addClientBtn').addEventListener('click', async () => {
     latency       : null,
     lastCheck     : null,
     equipments    : [],
+    planComponents: [], 
     lat, lng,
   };
 
   devices[id] = device;
-  clientImages[id] = { floorplan: null, topo: null, rack: null };
+  clientImages[id] = { floorplan: null, topo: null, rack: null, info: null, video: null, alarm: null, telecom: null };
 
   addMarker(device);
   startMonitor(id);
@@ -528,27 +569,155 @@ function timeSince(iso) {
 }
 
 /* ══════════════════════════════════════════════════════
-   PLANS / TOPOLOGIES / BAIES RACKS
+   COUCHES MULTIPLES DE PLANS & IMPLANTATION
 ══════════════════════════════════════════════════════ */
-function renderPlanPane(id) {
-  const img = clientImages[id]?.floorplan;
-  document.getElementById('floorplanEmpty').style.display   = img ? 'none'  : 'flex';
-  document.getElementById('floorplanImgWrap').style.display = img ? 'block' : 'none';
-  document.getElementById('clearFloorplanBtn').style.display = img ? 'inline-block' : 'none';
-  if (img) document.getElementById('floorplanImg').src = img;
+function triggerLayerUpload() {
+  document.getElementById('uploadLayerImg').click();
 }
 
-document.getElementById('uploadFloorplan').addEventListener('change', e => {
-  const file = e.target.files[0]; if (!file || !selectedId) return;
-  readImage(file, b64 => {
-    clientImages[selectedId].floorplan = b64;
-    renderPlanPane(selectedId);
-    saveDevices();
-    showToast('🖼️ Plan de secours importé', 'info');
-  });
-  e.target.value = '';
-});
+function clearLayerImage() {
+  if (!selectedId || !clientImages[selectedId]) return;
+  clientImages[selectedId][currentPlanLayer] = null;
+  renderPlanPane(selectedId);
+  saveDevices();
+  showToast('🗑️ Image du calque supprimée', 'down');
+}
 
+function renderPlanPane(id) {
+  if (!id) return;
+  if (!clientImages[id]) clientImages[id] = {};
+  const currentImg = clientImages[id][currentPlanLayer];
+  
+  document.getElementById('layerPlanEmpty').style.display   = currentImg ? 'none'  : 'flex';
+  document.getElementById('layerPlanImgWrap').style.display = currentImg ? 'block' : 'none';
+  document.getElementById('clearLayerImgBtn').style.display = currentImg ? 'inline-block' : 'none';
+  document.getElementById('layerEmptyText').textContent = `Aucun plan configuré pour le calque [${currentPlanLayer.toUpperCase()}]`;
+
+  if (currentImg) {
+    document.getElementById('layerPlanImg').src = currentImg;
+    renderPlanMarkers(id);
+  }
+}
+
+function preparePlanComponentCreation() {
+  const currentImg = clientImages[selectedId]?.[currentPlanLayer];
+  if (!currentImg) {
+    showToast('⚠️ Importez d\'abord un fond de plan pour ce calque', 'down');
+    return;
+  }
+  isPlacingComponent = true;
+  showToast('🎯 Cliquez sur le plan pour y positionner l\'équipement', 'info');
+}
+
+function savePlanComponent() {
+  const d = devices[selectedId]; if (!d) return;
+  const name = document.getElementById('pcName').value.trim();
+  if (!name) { showToast('⚠️ Le nom de l\'équipement est requis', 'down'); return; }
+
+  if (!d.planComponents) d.planComponents = [];
+
+  const newComponent = {
+    layer: currentPlanLayer,
+    x: pendingCoords.x,
+    y: pendingCoords.y,
+    name: name,
+    ip: document.getElementById('pcIp').value.trim() || 'Non renseignée',
+    owner: document.getElementById('pcOwner').value.trim() || 'Non attribué',
+    rackLocation: document.getElementById('pcRackLocation').value.trim() || 'Non spécifié',
+    alarmType: document.getElementById('pcAlarmType').value
+  };
+
+  d.planComponents.push(newComponent);
+  saveDevices();
+  renderPlanMarkers(selectedId);
+  closeModal('planComponentModal');
+  showToast(`✅ Équipement [${name}] ajouté au plan`, 'up');
+}
+
+function renderPlanMarkers(clientId) {
+  const d = devices[clientId]; if (!d) return;
+  const markersContainer = document.getElementById('layerPlanMarkers');
+  if (!markersContainer) return;
+  markersContainer.innerHTML = '';
+
+  const components = d.planComponents || [];
+  
+  components.forEach((comp, idx) => {
+    if (comp.layer !== currentPlanLayer) return;
+
+    const marker = document.createElement('div');
+    marker.style.position = 'absolute';
+    marker.style.left = `${comp.x}%`;
+    marker.style.top = `${comp.y}%`;
+    marker.style.transform = 'translate(-50%, -50%)';
+    marker.style.width = '24px';
+    marker.style.height = '24px';
+    marker.style.borderRadius = '50%';
+    marker.style.display = 'flex';
+    marker.style.alignItems = 'center';
+    marker.style.justifyContent = 'center';
+    marker.style.cursor = 'pointer';
+    marker.style.pointerEvents = 'auto';
+    marker.style.border = '2px solid white';
+    marker.style.boxShadow = '0 0 8px rgba(0,0,0,0.6)';
+
+    if (comp.layer === 'info')    { marker.style.backgroundColor = 'var(--c-info)'; marker.innerHTML = '💻'; }
+    if (comp.layer === 'telecom') { marker.style.backgroundColor = 'var(--c-telecom)'; marker.innerHTML = '📞'; }
+    if (comp.layer === 'alarm')   { marker.style.backgroundColor = 'var(--c-alarm)'; marker.innerHTML = '🚨'; }
+    if (comp.layer === 'video')   { marker.style.backgroundColor = '#9333ea'; marker.innerHTML = '📹'; }
+
+    marker.title = comp.name;
+
+    marker.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openViewComponentModal(idx);
+    });
+
+    markersContainer.appendChild(marker);
+  });
+}
+
+function openViewComponentModal(idx) {
+  currentSelectedComponentIdx = idx;
+  const comp = devices[selectedId].planComponents[idx];
+  document.getElementById('vpcTitle').textContent = comp.name;
+
+  let html = `<div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
+                <div class="detail-row"><span>Calque système</span><span style="text-transform:uppercase; color:var(--accent); font-weight:bold;">${comp.layer}</span></div>`;
+
+  if (comp.layer === 'info' || comp.layer === 'telecom' || comp.layer === 'video') {
+    html += `<div class="detail-row"><span>Adresse IP</span><span style="font-family:var(--font-mono); color:#fff;">${comp.ip}</span></div>`;
+    if (comp.layer !== 'video') {
+      html += `<div class="detail-row"><span>Attribué à / Propriétaire</span><b>${comp.owner}</b></div>`;
+    }
+    html += `<div class="detail-row"><span>Position en Baie Rack</span><span>${comp.rackLocation}</span></div>`;
+  } else if (comp.layer === 'alarm') {
+    html += `<div class="detail-row"><span>Type d'élément matériel</span><span style="color:var(--warn); font-weight:bold;">${comp.alarmType.toUpperCase()}</span></div>`;
+  }
+
+  html += `</div>`;
+  document.getElementById('vpcContent').innerHTML = html;
+
+  const role = sessionStorage.getItem('comunic_role');
+  document.getElementById('vpcDeleteBtn').style.display = (role === 'stagiaire') ? 'none' : 'inline-block';
+
+  openModal('viewPlanComponentModal');
+}
+
+function deletePlanComponent() {
+  if (currentSelectedComponentIdx === null || !selectedId) return;
+  const d = devices[selectedId];
+  d.planComponents.splice(currentSelectedComponentIdx, 1);
+  saveDevices();
+  renderPlanMarkers(selectedId);
+  closeModal('viewPlanComponentModal');
+  showToast('🗑️ Équipement retiré du plan', 'down');
+  currentSelectedComponentIdx = null;
+}
+
+/* ══════════════════════════════════════════════════════
+   TOPOLOGIES ANCIENNES & CONFIGURATION BAIES
+══════════════════════════════════════════════════════ */
 function renderTopoPane(id) {
   const img = clientImages[id]?.topo;
   document.getElementById('topoEmpty').style.display    = img ? 'none'  : 'flex';
@@ -1029,6 +1198,7 @@ function showToast(message, type = 'info') {
 
 function openModal(id)  { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
 function triggerUpload(type) {
   const map = { floorplan: 'uploadFloorplan', topo: 'uploadTopo', rack: 'uploadRack' };
   document.getElementById(map[type])?.click();
@@ -1050,6 +1220,68 @@ function clearImage(type) {
 
 function readImage(file, cb) {
   const r = new FileReader(); r.onload = e => cb(e.target.result); r.readAsDataURL(file);
+}
+
+/* ══════════════════════════════════════════════════════
+   INTERFACE ET ACTIONS MODAL ADMIN USERS (ROLES)
+══════════════════════════════════════════════════════ */
+async function loadAdminUsersList() {
+  const tbody = document.getElementById('adminUsersTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:10px;">Chargement des utilisateurs...</td></tr>`;
+
+  const currentConnectedUser = sessionStorage.getItem('comunic_username') || '';
+
+  try {
+    const res = await fetch('/admin/users', { headers: authHeaders() });
+    if (!res.ok) {
+      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--down);">Erreur de chargement.</td></tr>`;
+      return;
+    }
+    const usersList = await res.json();
+
+    tbody.innerHTML = usersList.map(u => {
+      const isSelf = u.username === currentConnectedUser;
+      const disabledAttr = isSelf ? 'disabled' : '';
+      const selfIndicator = isSelf ? ' <span style="color:var(--text-dim); font-size:10px;">(Vous)</span>' : '';
+
+      return `
+        <tr>
+          <td><b>${u.username}</b>${selfIndicator}</td>
+          <td style="color:var(--text-dim);">${u.email}</td>
+          <td><span class="log-event-badge" style="background:rgba(245,158,11,0.15); color:var(--warn);">${u.role.toUpperCase()}</span></td>
+          <td>
+            <select class="field" style="padding:4px; font-size:11px;" ${disabledAttr} onchange="changeUserRole('${u.id}', this.value)">
+              <option value="stagiaire" ${u.role === 'stagiaire' ? 'selected' : ''}>Stagiaire</option>
+              <option value="technicien" ${u.role === 'technicien' ? 'selected' : ''}>Technicien</option>
+              <option value="responsable" ${u.role === 'responsable' ? 'selected' : ''}>Responsable</option>
+              <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+            </select>
+          </td>
+        </tr>`;
+    }).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;">Erreur réseau ou serveur.</td></tr>`;
+  }
+}
+
+async function changeUserRole(userId, newRole) {
+  try {
+    const res = await fetch(`/admin/users/${userId}/role`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify({ role: newRole })
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      showToast(`❌ Erreur: ${data.error || 'Modification impossible'}`, 'down');
+      return;
+    }
+    showToast('⚡ Rôle utilisateur mis à jour avec succès', 'up');
+    loadAdminUsersList();
+  } catch (err) {
+    showToast('❌ Erreur réseau', 'down');
+  }
 }
 
 /* ══════════════════════════════════════════════════════
@@ -1127,12 +1359,65 @@ document.addEventListener('DOMContentLoaded', () => {
   loadDevices();
 
   Object.values(devices).forEach(d => {
-    if (!clientImages[d.id]) clientImages[d.id] = { floorplan: null, topo: null, rack: null };
+    if (!clientImages[d.id]) clientImages[d.id] = { floorplan: null, topo: null, rack: null, info: null, video: null, alarm: null, telecom: null };
     if (!d.equipments)        d.equipments = [];
+    if (!d.planComponents)    d.planComponents = [];
     addMarker(d);
     startMonitor(d.id);
   });
 
   updateStats();
   updateGlobalStatus();
+  
+  setTimeout(checkUserRolePermissions, 100);
+
+  const adminBtn = document.getElementById('openAdminUsersModalBtn');
+  if (adminBtn) {
+    adminBtn.addEventListener('click', () => {
+      loadAdminUsersList();
+      openModal('adminUsersModal');
+    });
+  }
+
+  document.querySelectorAll('input[name="planLayer"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      currentPlanLayer = e.target.value;
+      renderPlanPane(selectedId);
+    });
+  });
+
+  const planImg = document.getElementById('layerPlanImg');
+  if (planImg) {
+    planImg.addEventListener('click', (e) => {
+      if (!isPlacingComponent) return;
+      
+      const rect = e.target.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width  * 100).toFixed(2);
+      const y = ((e.clientY - rect.top)  / rect.height * 100).toFixed(2);
+
+      pendingCoords = { x: parseFloat(x), y: parseFloat(y) };
+      isPlacingComponent = false;
+
+      document.getElementById('planComponentModalTitle').textContent = `Équipement : [${currentPlanLayer.toUpperCase()}]`;
+      document.getElementById('pcName').value = '';
+      document.getElementById('pcIp').value = '';
+      document.getElementById('pcOwner').value = '';
+      document.getElementById('pcRackLocation').value = '';
+      
+      if (currentPlanLayer === 'info' || currentPlanLayer === 'telecom') {
+        document.getElementById('pcGroupNetwork').style.display = 'block';
+        document.getElementById('pcGroupAlarm').style.display = 'none';
+        document.getElementById('pcOwnerLabel').textContent = currentPlanLayer === 'info' ? "Nom du poste / Utilisateur" : "Propriétaire du combiné";
+      } else if (currentPlanLayer === 'alarm') {
+        document.getElementById('pcGroupNetwork').style.display = 'none';
+        document.getElementById('pcGroupAlarm').style.display = 'block';
+      } else {
+        document.getElementById('pcGroupNetwork').style.display = 'block';
+        document.getElementById('pcGroupAlarm').style.display = 'none';
+        document.getElementById('pcOwner').value = 'N/A';
+      }
+
+      openModal('planComponentModal');
+    });
+  }
 });

@@ -17,7 +17,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 /* ══════════════════════════════════════════════════════
    AUTH — BDD locale temporaire (proto)
-   À terme : remplacer par BDD réelle + LDAP/AD
 ══════════════════════════════════════════════════════ */
 const users    = []; // { id, username, email, passwordHash, salt, role, createdAt }
 const sessions = {}; // { token: { userId, username, role, expires } }
@@ -30,7 +29,6 @@ function hashPassword(password, salt) {
 function generateSalt()  { return crypto.randomBytes(16).toString('hex'); }
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
 
-/* ── Middleware ── */
 function requireAuth(req, res, next) {
   const token = req.headers['x-auth-token'];
   if (!token || !sessions[token])
@@ -45,7 +43,13 @@ function requireAuth(req, res, next) {
   next();
 }
 
-/* ── POST /auth/register ── */
+function requireAdmin(req, res, next) {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Accès refusé : Administrateur requis' });
+  }
+  next();
+}
+
 app.post('/auth/register', (req, res) => {
   const { username, email, password } = req.body;
 
@@ -65,7 +69,7 @@ app.post('/auth/register', (req, res) => {
     email,
     passwordHash: hashPassword(password, salt),
     salt,
-    role        : users.length === 0 ? 'admin' : 'user',
+    role        : users.length === 0 ? 'admin' : 'stagiaire', 
     createdAt   : new Date().toISOString()
   };
   users.push(user);
@@ -82,7 +86,6 @@ app.post('/auth/register', (req, res) => {
   res.json({ success: true, token, username: user.username, role: user.role });
 });
 
-/* ── POST /auth/login ── */
 app.post('/auth/login', (req, res) => {
   const { email, password } = req.body;
   if (!email || !password)
@@ -103,19 +106,48 @@ app.post('/auth/login', (req, res) => {
     expires : Date.now() + SESSION_DURATION
   };
 
-  console.log(`[AUTH] Connexion: ${user.username}`);
+  console.log(`[AUTH] Connexion: ${user.username} (${user.role})`);
   res.json({ success: true, token, username: user.username, role: user.role });
 });
 
-/* ── POST /auth/logout ── */
 app.post('/auth/logout', requireAuth, (req, res) => {
   delete sessions[req.headers['x-auth-token']];
   res.json({ success: true });
 });
 
-/* ── GET /auth/me ── */
 app.get('/auth/me', requireAuth, (req, res) => {
   res.json({ username: req.user.username, role: req.user.role });
+});
+
+app.get('/admin/users', requireAuth, requireAdmin, (req, res) => {
+  const list = users.map(u => ({ id: u.id, username: u.username, email: u.email, role: u.role }));
+  res.json(list);
+});
+
+/* ── ROUTE ADMIN : PUT /admin/users/:id/role ── */
+app.put('/admin/users/:id/role', requireAuth, requireAdmin, (req, res) => {
+  const { role } = req.body;
+  const rolesValides = ['admin', 'responsable', 'technicien', 'stagiaire'];
+  if (!rolesValides.includes(role)) return res.status(400).json({ error: 'Rôle invalide' });
+
+  const user = users.find(u => u.id === req.params.id);
+  if (!user) return res.status(404).json({ error: 'Utilisateur introuvable' });
+
+  // 🔒 VERROU : Empêcher un administrateur de modifier son propre rôle
+  if (user.id === req.user.userId) {
+    return res.status(400).json({ error: 'Interdit : Vous ne pouvez pas modifier votre propre rôle' });
+  }
+
+  user.role = role;
+  
+  Object.keys(sessions).forEach(token => {
+    if (sessions[token].userId === user.id) {
+      sessions[token].role = role;
+    }
+  });
+
+  console.log(`[ADMIN] Le rôle de ${user.username} a été modifié en ${role.toUpperCase()}`);
+  res.json({ success: true, userId: user.id, newRole: role });
 });
 
 /* ══════════════════════════════════════════════════════
@@ -151,18 +183,12 @@ app.post('/check', requireAuth, async (req, res) => {
   }
 });
 
-/* ══════════════════════════════════════════════════════
-   ALERTE EMAIL (simulation)
-══════════════════════════════════════════════════════ */
 app.post('/alert-email', requireAuth, (req, res) => {
   const { to, device, ip, type, time } = req.body;
   console.log(`[EMAIL ALERT] To: ${to} | Client: ${device} (${ip}) | State: ${type.toUpperCase()} at ${time}`);
   res.json({ success: true, msg: 'Email simulé envoyé avec succès' });
 });
 
-/* ══════════════════════════════════════════════════════
-   GÉOCODAGE
-══════════════════════════════════════════════════════ */
 app.get('/geocode', requireAuth, async (req, res) => {
   const q = req.query.q;
   if (!q) return res.status(400).json({ error: 'Query requise' });
